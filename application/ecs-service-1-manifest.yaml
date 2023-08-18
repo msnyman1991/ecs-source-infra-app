@@ -1,0 +1,17 @@
+- app_name: <app_name>
+  cluster_name: <cluster_name>
+  image: <image_name>
+  image_version: 1
+  ecs_container_port: 80
+  ecs_host_port: 80
+  ecs_container_cpu: 256
+  ecs_container_memory: 512
+  env_variables:
+    - name: ENV_VAR1
+      value: example1
+    - name: ENV_VAR2
+      value: example2
+    - name: ENV_VAR3
+      value: example3
+    - name: ENV_VAR4
+      value: example4
