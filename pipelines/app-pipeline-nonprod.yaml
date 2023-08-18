@@ -1,1 +1,49 @@
+name: "Deploy ${{ parameters.appName }}"
 
+trigger:
+  - none
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+  - name: environmentName
+    type: string
+    default: "dev"
+    values:
+      - "dev"
+  - name: appName
+    type: string
+    default: ecs application name, e.g. app-origination
+  - name: regionName
+    type: string
+    default: 'eu-west-1'
+  - name: cicdIAMRoleName
+    type: string
+    default: ''
+  - name: awsAccountID
+    type: string
+    default: ''
+  - name: ServiceConnectionName
+    type: string
+    default: ''
+  - name: azureDevOpsProjectName
+    type: string
+    default: ''
+  - name: branchName
+    displayName: branchName - ecs-service-manifest 
+    type: string
+    default: 'main'
+
+stages:
+  - template: templates/app-pipeline.yml
+  - template: templates/infra-pipeline.yml
+    parameters:
+      environmentName: ${{ parameters.environmentName }}
+      appName: ${{ parameters.appName }}
+      regionName: ${{ parameters.regionName }}
+      branchName: ${{ parameters.branchName }}
+      cicdIAMRoleName: ${{ parameters.cicdIAMRoleName }}
+      awsAccountID: ${{ parameters.awsAccountID }}
+      ServiceConnectionName: ${{ parameters.ServiceConnectionName }}
+      azureDevOpsProjectName: ${{ parameters.azureDevOpsProjectName }}

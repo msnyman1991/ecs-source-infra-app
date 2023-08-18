@@ -1,1 +1,61 @@
+parameters:
+  - name: environmentName
+    type: string
+  - name: appName
+    type: string
+  - name: regionName
+    type: string
+  - name: branchName
+    type: string
+  - name: cicdIAMRoleName
+    type: string
+  - name: awsAccountID
+    type: string
+  - name: ServiceConnectionName
+    type: string
+  - name: azureDevOpsProjectName
+    type: string
 
+stages:
+  - stage: DeployInfra
+    displayName: Deploy ECS Cluster
+    jobs:
+      - job: TerraformApply
+        steps:
+          - checkout: self
+          - template: dependencies/install-tg-tf.yml
+          - task: AWSShellScript@1
+            displayName: DeployECSCluster
+            inputs:
+              awsCredentials: ${{ parameters.ServiceConnectionName }}
+              regionName: ${{ parameters.regionName }}
+              scriptType: "inline"
+              inlineScript: |
+                ## Set AWS Credentials
+
+                set -e 
+                # ls -al
+                # env | sort | grep DEV
+                # echo "[+] Pre assume role"
+                # env | sort | grep AWS | rev
+                # Connection to the aws account
+                ACCOUNT_NAME=$(echo '${{ parameters.environmentName }}' | tr '[:lower:]' '[:upper:]')
+                ACCOUNT_ID="${{ parameters.awsAccountID }}"
+
+                echo $ACCOUNT_NAME
+                OUT=$(aws sts assume-role --role-arn "arn:aws:iam::${ACCOUNT_ID}:role/${{ parameters.cicdIAMRoleName }}" --role-session-name AWSCLI-Session)
+                export AWS_ACCESS_KEY_ID=$(echo $OUT | jq -r '.Credentials''.AccessKeyId');\
+                export AWS_SECRET_ACCESS_KEY=$(echo $OUT | jq -r '.Credentials''.SecretAccessKey');\
+                export AWS_SESSION_TOKEN=$(echo $OUT | jq -r '.Credentials''.SessionToken');
+
+                # echo "[+] Post assume role"
+                # aws sts get-caller-identity
+                # env | sort | grep AWS | rev
+
+                export CI=true
+                ACCOUNT_ID="$(aws sts get-caller-identity | jq -r '. .Account')"
+
+                echo "##### TERRGRUNT RUN #####"
+
+                cd ecs-source-infra-app/infrastructure/live/${{ parameters.environmentName }}/${{ parameters.regionName }}/ecs/ecs-fargate-cluster-${{ parameters.appName }}/
+                ~/.tfenv/bin/terragrunt apply -var "aws_account_id=${ACCOUNT_ID}" -var "app_name=${app_name}" --auto-approve --terragrunt-non-interactive -compact-warnings

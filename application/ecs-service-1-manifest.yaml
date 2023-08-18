@@ -1,5 +1,5 @@
 - app_name: <app_name>
-  cluster_name: <cluster_name>
+  cluster_name: <cluster_name> # Cluster name could be retrieved from Terraform state in ecs-source-infra-app/infrastructure/live/dev/eu-west-1/ecs/ecs-fargate-cluster-1
   image: <image_name>
   image_version: 1
   ecs_container_port: 80

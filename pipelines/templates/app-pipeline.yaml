@@ -1,1 +1,106 @@
+parameters:
+  - name: environmentName
+    type: string
+  - name: appName
+    type: string
+  - name: regionName
+    type: string
+  - name: branchName
+    type: string
+  - name: cicdIAMRoleName
+    type: string
+  - name: awsAccountID
+    type: string
+  - name: ServiceConnectionName
+    type: string
+  - name: azureDevOpsProjectName
+    type: string
 
+stages:
+  - stage: DeployApp
+    dependsOn: 
+    displayName: Deploy ECS Service
+    jobs:
+      - job: TerraformApply
+        steps:
+          - checkout: self
+          - template: dependencies/install-tg-tf.yml
+          - task: AWSShellScript@1
+            displayName: DeployECSService
+            inputs:
+              awsCredentials: ${{ parameters.ServiceConnectionName }}
+              regionName: ${{ parameters.regionName }}
+              scriptType: "inline"
+              inlineScript: |
+                ## Set AWS Credentials
+
+                set -e 
+                # ls -al
+                # env | sort | grep DEV
+                # echo "[+] Pre assume role"
+                # env | sort | grep AWS | rev
+                # Connection to the aws account
+                ACCOUNT_NAME=$(echo '${{ parameters.environmentName }}' | tr '[:lower:]' '[:upper:]')
+                ACCOUNT_ID="${{ parameters.awsAccountID }}"
+
+                echo $ACCOUNT_NAME
+                OUT=$(aws sts assume-role --role-arn "arn:aws:iam::${ACCOUNT_ID}:role/${{ parameters.cicdIAMRoleName }}" --role-session-name AWSCLI-Session)
+                export AWS_ACCESS_KEY_ID=$(echo $OUT | jq -r '.Credentials''.AccessKeyId');\
+                export AWS_SECRET_ACCESS_KEY=$(echo $OUT | jq -r '.Credentials''.SecretAccessKey');\
+                export AWS_SESSION_TOKEN=$(echo $OUT | jq -r '.Credentials''.SessionToken');
+
+                # echo "[+] Post assume role"
+                # aws sts get-caller-identity
+                # env | sort | grep AWS | rev
+
+                export CI=true
+                ACCOUNT_ID="$(aws sts get-caller-identity | jq -r '. .Account')"
+
+                echo "##### Generate inputs for ecs service #####"
+
+                python -m pip install --upgrade pip
+                python - <<SCRIPT
+
+                import yaml
+                import subprocess
+
+                # Load the YAML Manifest file
+                with open('ecs-source-infra-app/application/ecs-service-manifest-${{ parameters.appName }}.yml') as file:
+                    data = yaml.safe_load(file)
+
+                # Define the target app_name
+                target_app_name = '${{ parameters.appName }}'
+
+                # Filter the collection based on the target app_name
+                filtered_collection = [item for item in data if item.get('app_name') == target_app_name]
+
+                # Write the filtered collection to a file
+                with open('manifest_tmp.yml', 'w') as output_file:
+                    output_file.write(yaml.dump(filtered_collection))
+
+                # Run the terraform yamldecode command
+                cmd = ['terraform', 'console']
+                input_cmd = 'yamldecode(file("manifest_tmp.yml"))["0"]'
+                output = subprocess.check_output(cmd, input=input_cmd.encode('utf-8'))
+
+                # Format the output string and remove extra brackets
+                output_string = output.decode('utf-8').strip().strip('{}')
+
+                # Append the output string to the file
+                with open('ecs-source-infra-app/infrastructure/live/${{ parameters.environmentName }}/${{ parameters.regionName }}/ecs/ecs-service-${{ parameters.appName }}/terragrunt.hcl', 'a') as file:
+                    file.write(f"inputs = {{{output_string}}}\n")
+
+                # Confirmation message
+                print("Inputs generated for terragrunt.hcl")
+
+                SCRIPT
+
+                cat ecs-source-infra-app/infrastructure/live/${{ parameters.environmentName }}/${{ parameters.regionName }}/ecs/ecs-service-${{ parameters.appName }}/terragrunt.hcl
+
+                echo "##### TERRGRUNT RUN #####"
+
+                # Export app_name parameter as global variable
+                export app_name=$(echo '${{ parameters.appName }}');
+
+                cd ecs-source-infra-app/infrastructure/live/${{ parameters.environmentName }}/${{ parameters.regionName }}/ecs/ecs-service-${{ parameters.appName }}/
+                ~/.tfenv/bin/terragrunt apply -var "aws_account_id=${ACCOUNT_ID}" -var "app_name=${app_name}" --auto-approve --terragrunt-non-interactive -compact-warnings
